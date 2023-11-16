@@ -1,0 +1,211 @@
+﻿@page "/"
+@page "/join/{SessionId}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.SignalR.Client
+@using QRCoder
+@using System.Drawing
+@using System.Drawing.Imaging
+@using PrizeWinner.Hubs
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Home</PageTitle>
+
+<p>Current State = @_currentView</p>
+
+<p>SessionId = @SessionId</p>
+
+@{
+    switch (_currentView)
+    {
+        case CurrentView.NotJoined:
+            <div class="form-group">
+                <button @onclick="() => _currentView = CurrentView.Creating">Create</button>
+            </div>
+            break;
+        case CurrentView.Creating:
+            <div class="form-group">
+                <button @onclick="CreateSession">Create Session</button>
+            </div>
+            break;
+        case CurrentView.Joining:
+            <div class="form-group">
+                <label>
+                    Your Name:
+                    <input @bind="_currentUserName" />
+                    <button @onclick="() => JoinSession(_currentUserName)">Join Session</button>
+                </label>
+            </div>
+            break;
+        case CurrentView.SessionJoined:
+            <p>@SessionId</p>
+            break;
+        case CurrentView.SelectingWinner:
+            <div>
+                <img alt="" src="@_qrCode" width="300" class="mb-5" />
+            </div>
+            <a href="/join/@SessionId">Join Here.</a>
+            <ul>
+                @foreach (var user in _users)
+                {
+                    <li>@user.UserName</li>
+                }
+            </ul>
+            <button @onclick="ShowWinner">Show Winner</button>
+            <h1>@Winner?.UserName</h1>
+            break;
+
+    }
+}
+
+@* <div class="form-group">
+    <label>
+        User:
+        <input @bind="userInput" />
+    </label>
+</div>
+<div class="form-group">
+    <label>
+        Message:
+        <input @bind="messageInput" size="50" />
+    </label>
+</div>
+<button @onclick="Send" disabled="@(!IsConnected)">Send</button>
+
+<hr>
+
+<ul id="messagesList">
+    @foreach (var message in messages)
+    {
+        <li>@message</li>
+    }
+</ul> *@
+
+@code {
+
+    enum CurrentView
+    {
+        NotJoined,
+        Joining,
+        Creating,
+        SessionJoined,
+        SelectingWinner
+    }
+
+    private CurrentView _currentView;
+
+    private string? _qrCode;
+    private string? _currentUserName;
+    private bool _isHost = false;
+    private User? Winner;
+
+    [Parameter]
+    public string? SessionId { get; set; }
+
+    private HubConnection? hubConnection;
+    private readonly List<User> _users = new List<User>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/prizewinnerhub"))
+            .Build();
+
+        hubConnection.On<string>("SessionStarted", SessionStarted);
+        hubConnection.On<User>("UserJoined", UserJoined);
+        hubConnection.On<User>("UserLeft", UserLeft);
+
+        await hubConnection.StartAsync();
+
+        if (string.IsNullOrWhiteSpace(SessionId))
+        {
+            _isHost = true;
+            _currentView = CurrentView.NotJoined;
+        }
+        else
+        {
+            _currentView = CurrentView.Joining;
+        }
+    }
+
+    private void UserLeft(User user)
+    {
+        var userToRemove = _users.FirstOrDefault(u => u.ConnectionId == user.ConnectionId);
+        if (userToRemove is not null)
+        {
+            _users.Remove(userToRemove);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UserJoined(User username)
+    {
+        _users.Add(username);
+        if (!_isHost)
+        {
+            _currentView = CurrentView.SessionJoined;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SessionStarted(string sessionId)
+    {
+        using MemoryStream ms = new();
+        QRCodeGenerator qrCodeGenerate = new();
+        var url = Navigation.ToAbsoluteUri($"/join/{sessionId}").ToString();
+        QRCodeData qrCodeData = qrCodeGenerate.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+        QRCode qrCode = new(qrCodeData);
+        using Bitmap qrBitMap = qrCode.GetGraphic(20);
+        qrBitMap.Save(ms, ImageFormat.Png);
+        string base64 = Convert.ToBase64String(ms.ToArray());
+        _qrCode = $"data:image/png;base64,{base64}";
+
+
+        SessionId = sessionId;
+        _currentView = CurrentView.SelectingWinner;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CreateSession()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("CreateSession");
+        }
+    }
+
+    private async Task JoinSession(string sessionId)
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("JoinSession", SessionId, _currentUserName);
+        }
+    }
+
+
+
+    // private async Task Send()
+    // {
+    //     if (hubConnection is not null)
+    //     {
+    //         await hubConnection.SendAsync("SendMessage", userInput, messageInput);
+    //     }
+    // }
+
+    public bool IsConnected =>
+        hubConnection?.State == HubConnectionState.Connected;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private void ShowWinner()
+    {
+        Winner = _users.MinBy(u => Guid.NewGuid());
+    }
+
+}
