@@ -9,77 +9,112 @@
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Prize Winner</PageTitle>
 
-<p>Current State = @_currentView</p>
+@* <p>Current State = @_currentView</p> *@
 
-<p>SessionId = @SessionId</p>
+@* <p>SessionId = @SessionId</p> *@
 
 @{
     switch (_currentView)
     {
         case CurrentView.NotJoined:
-            <div class="form-group">
-                <button @onclick="() => _currentView = CurrentView.Creating">Create</button>
+            <div class="px-4 py-5 my-5 text-center">
+                <h1 class="display-5 fw-bold">Prize Winner</h1>
+                <div class="col-lg-6 mx-auto">
+                    <p class="lead mb-4">Easily enroll and select winners during your events!</p>
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <div class="form-group">
+                            <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="() => _currentView = CurrentView.Creating">Create</button>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+
             break;
         case CurrentView.Creating:
-            <div class="form-group">
-                <button @onclick="CreateSession">Create Session</button>
+            <div class="px-4 py-5 my-5 text-center">
+                <h1 class="display-5 fw-bold">Create a new session</h1>
+                <div class="col-lg-6 mx-auto">
+                    <p class="lead mb-4">Create a new session so your group can join.</p>
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <div class="form-group">
+                            <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="CreateSession">Create Session</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             break;
         case CurrentView.Joining:
-            <div class="form-group">
-                <label>
-                    Your Name:
-                    <input @bind="_currentUserName" />
-                    <button @onclick="() => JoinSession(_currentUserName)">Join Session</button>
-                </label>
+            <div class="px-4 py-5 my-5 text-center">
+                <h1 class="display-5 fw-bold">Create a new session</h1>
+                <div class="col-lg-6 mx-auto">
+                    <p class="lead mb-4">Join a session by entering your name:</p>
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <div class="form-group">
+                            <label>
+                                Your Name:
+                                <input @bind="_enteredUserName" />
+                                <button @onclick="() => JoinSession(_enteredUserName)">Join Session</button>
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+
+
             break;
         case CurrentView.SessionJoined:
-            <p>@SessionId</p>
+            <div class="px-4 py-5 my-5 text-center">
+                <h1 class="display-5 fw-bold">Create a new session</h1>
+                <div class="col-lg-6 mx-auto">
+                    <p class="lead mb-4">Join a session by entering your name:</p>
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <p>You've been entered with the name: @_currentUser?.UserName</p>
+                        @if (Winner?.ConnectionId == hubConnection?.ConnectionId)
+                        {
+                            <h1>You are the winner!</h1>
+                        }
+                    </div>
+                </div>
+            </div>
+
+
+
             break;
         case CurrentView.SelectingWinner:
-            <div>
-                <img alt="" src="@_qrCode" width="300" class="mb-5" />
-            </div>
-            <a href="/join/@SessionId">Join Here.</a>
-            <ul>
-                @foreach (var user in _users)
-                {
-                    <li>@user.UserName</li>
-                }
-            </ul>
-            <button @onclick="ShowWinner">Show Winner</button>
-            <h1>@Winner?.UserName</h1>
-            break;
+            <div class="px-4 py-5 my-5 text-center">
+                <h1 class="display-5 fw-bold">Create a new session</h1>
+                <div class="col-lg-6 mx-auto">
+                    <p class="lead mb-4">Join a session by entering your name:</p>
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <div>
+                            <p>Scan this QR code to join.</p>
+                            <img alt="" src="@_qrCode" width="300" class="mb-5" />
 
+                            <a href="/join/@SessionId">Join Here</a>
+                            <ul>
+                                @foreach (var user in _users)
+                                {
+                                    if (!user.IsHost)
+                                    {
+                                        <li>@user.UserName</li>
+                                    }
+                                }
+                            </ul>
+                            <button @onclick="SelectWinner">Show Winner</button>
+                            <h1>@Winner?.UserName</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            break;
     }
 }
-
-@* <div class="form-group">
-    <label>
-        User:
-        <input @bind="userInput" />
-    </label>
-</div>
-<div class="form-group">
-    <label>
-        Message:
-        <input @bind="messageInput" size="50" />
-    </label>
-</div>
-<button @onclick="Send" disabled="@(!IsConnected)">Send</button>
-
-<hr>
-
-<ul id="messagesList">
-    @foreach (var message in messages)
-    {
-        <li>@message</li>
-    }
-</ul> *@
 
 @code {
 
@@ -95,9 +130,10 @@
     private CurrentView _currentView;
 
     private string? _qrCode;
-    private string? _currentUserName;
+    private string? _enteredUserName;
     private bool _isHost = false;
     private User? Winner;
+    private User? _currentUser;
 
     [Parameter]
     public string? SessionId { get; set; }
@@ -114,6 +150,7 @@
         hubConnection.On<string>("SessionStarted", SessionStarted);
         hubConnection.On<User>("UserJoined", UserJoined);
         hubConnection.On<User>("UserLeft", UserLeft);
+        hubConnection.On<User>("WinnerSelected", WinnerSelected);
 
         await hubConnection.StartAsync();
 
@@ -128,6 +165,20 @@
         }
     }
 
+    private void WinnerSelected(User winner)
+    {
+        Winner = winner;
+
+        if (winner.ConnectionId == hubConnection.ConnectionId)
+        {
+            //This user is the winner
+
+        }
+
+
+        InvokeAsync(StateHasChanged);
+    }
+
     private void UserLeft(User user)
     {
         var userToRemove = _users.FirstOrDefault(u => u.ConnectionId == user.ConnectionId);
@@ -138,12 +189,16 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void UserJoined(User username)
+    private void UserJoined(User user)
     {
-        _users.Add(username);
+        _users.Add(user);
         if (!_isHost)
-        {
             _currentView = CurrentView.SessionJoined;
+
+        if (!_isHost && hubConnection.ConnectionId == user.ConnectionId)
+        {
+            //This is the current user
+            _currentUser = user;
         }
         InvokeAsync(StateHasChanged);
     }
@@ -178,7 +233,7 @@
     {
         if (hubConnection is not null)
         {
-            await hubConnection.SendAsync("JoinSession", SessionId, _currentUserName);
+            await hubConnection.SendAsync("JoinSession", SessionId, _enteredUserName);
         }
     }
 
@@ -203,9 +258,14 @@
         }
     }
 
-    private void ShowWinner()
+    private async Task SelectWinner()
     {
-        Winner = _users.MinBy(u => Guid.NewGuid());
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("SelectWinner");
+        }
+        //
+        // Winner = _users.MinBy(u => Guid.NewGuid());
     }
 
 }
