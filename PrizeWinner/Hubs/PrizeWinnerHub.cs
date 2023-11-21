@@ -9,22 +9,24 @@ namespace PrizeWinner.Hubs
         public async Task CreateSession()
         {
             var sessionId = Guid.NewGuid().ToString();
-            _sessions.Add(new Session
+            var session = new Session
             {
                 SessionId = sessionId,
                 Users = new List<User>() { new User() { ConnectionId = Context.ConnectionId, IsHost = true } }
-            });
+            };
+            _sessions.Add(session);
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
-            await Clients.Caller.SendAsync("SessionStarted", sessionId);
+            await Clients.Caller.SendAsync("SessionStarted", session);
         }
 
         public async Task JoinSession(string sessionId, string userName)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
             var user = new User() { ConnectionId = Context.ConnectionId, UserName = userName };
-            _sessions.Single(s => s.SessionId == sessionId)?.Users.Add(user);
+            var session = _sessions.Single(s => s.SessionId == sessionId);
+            session?.Users.Add(user);
 
-            await Clients.Group(sessionId).SendAsync("UserJoined", user);
+            await Clients.Group(sessionId).SendAsync("UserJoined", session);
         }
 
         public async Task SelectWinner()
@@ -32,16 +34,22 @@ namespace PrizeWinner.Hubs
             var session = GetCurrentUserSession();
             if (session?.SessionId != null)
             {
+                if (session.GetEligibleUsers().All(u => session.Winners.Any(sw => sw.ConnectionId == u.ConnectionId)))
+                {
+                    session.Winners.Clear();
+                }
+
                 var random = new Random();
-                var winner = session.Users.Where(u => !u.IsHost && session.Winners.All(w => w.ConnectionId != u.ConnectionId)).MinBy(u => Guid.NewGuid().ToString());
+                var winner = session.GetEligibleUsers().Where(u => session.Winners.All(w => w.ConnectionId != u.ConnectionId)).MinBy(u => Guid.NewGuid().ToString());
                 if (winner != null)
                 {
-                    winner.HasBeenWinner = true;
-                    await Clients.Group(session.SessionId).SendAsync("WinnerSelected", winner);
                     session.Winners.Add(winner);
+                    await Clients.Group(session.SessionId).SendAsync("WinnerSelected", session, winner);
                 }
             }
         }
+
+
 
 
         public override async Task OnDisconnectedAsync(Exception? exception)
@@ -51,7 +59,14 @@ namespace PrizeWinner.Hubs
             {
                 var user = session.Users.Single(u => u.ConnectionId == Context.ConnectionId);
                 session.Users.Remove(user);
-                await Clients.Group(session.SessionId).SendAsync("UserLeft", user);
+                if (session.Users.Count == 0)
+                {
+                    _sessions.Remove(session);
+                }
+                else
+                {
+                    await Clients.Group(session.SessionId).SendAsync("UserLeft", session, user);
+                }
             }
             await base.OnDisconnectedAsync(exception);
         }
@@ -68,13 +83,18 @@ namespace PrizeWinner.Hubs
         public string? SessionId { get; set; }
         public List<User> Users { get; set; } = new();
         public List<User> Winners { get; set; } = new();
+
+        public List<User> GetEligibleUsers()
+        {
+            var eligibleUsers = Users.Where(u => !u.IsHost).ToList();
+            return eligibleUsers ?? Enumerable.Empty<User>().ToList();
+        }
     }
 
     public class User
     {
         public string ConnectionId { get; set; }
         public string UserName { get; set; }
-        public bool HasBeenWinner { get; set; }
         public bool IsHost { get; set; }
     }
 }

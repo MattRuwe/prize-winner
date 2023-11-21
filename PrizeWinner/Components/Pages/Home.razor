@@ -10,11 +10,6 @@
 @implements IAsyncDisposable
 
 <PageTitle>Prize Winner</PageTitle>
-
-@* <p>Current State = @_currentView</p> *@
-
-@* <p>SessionId = @SessionId</p> *@
-
 @{
     switch (_currentView)
     {
@@ -25,7 +20,7 @@
                     <p class="lead mb-4">Easily enroll and select winners during your events!</p>
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
                         <div class="form-group">
-                            <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="() => _currentView = CurrentView.Creating">Create</button>
+                            <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="() => _currentView = CurrentView.Creating">Let's Get Started</button>
                         </div>
                     </div>
                 </div>
@@ -48,15 +43,14 @@
             break;
         case CurrentView.Joining:
             <div class="px-4 py-5 my-5 text-center">
-                <h1 class="display-5 fw-bold">Create a new session</h1>
+                <h3 class="fw-bold">Join a session by entering your name:</h3>
                 <div class="col-lg-6 mx-auto">
-                    <p class="lead mb-4">Join a session by entering your name:</p>
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
                         <div class="form-group">
-                            <label>
+                            <label class="lead">
                                 Your Name:
                                 <input @bind="_enteredUserName" />
-                                <button @onclick="() => JoinSession(_enteredUserName)">Join Session</button>
+                                <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="() => JoinSession(_enteredUserName)">Join Session</button>
                             </label>
                         </div>
                     </div>
@@ -68,16 +62,18 @@
             break;
         case CurrentView.SessionJoined:
             <div class="px-4 py-5 my-5 text-center">
-                <h1 class="display-5 fw-bold">Create a new session</h1>
                 <div class="col-lg-6 mx-auto">
-                    <p class="lead mb-4">Join a session by entering your name:</p>
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <p>You've been entered with the name: @_currentUser?.UserName</p>
-                        @if (Winner?.ConnectionId == hubConnection?.ConnectionId)
-                        {
-                            <h1>You are the winner!</h1>
-                        }
+                        <p class="lead mb-4">You've been entered with the name: @_currentUser?.UserName</p>
                     </div>
+                    @if (Winner?.ConnectionId == hubConnection?.ConnectionId)
+                    {
+                        <div class="col-lg-6 mx-auto">
+                            <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                                <h1>You are the winner!</h1>
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -85,29 +81,45 @@
 
             break;
         case CurrentView.SelectingWinner:
-            <div class="px-4 py-5 my-5 text-center">
-                <h1 class="display-5 fw-bold">Create a new session</h1>
-                <div class="col-lg-6 mx-auto">
-                    <p class="lead mb-4">Join a session by entering your name:</p>
-                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <div>
-                            <p>Scan this QR code to join.</p>
-                            <img alt="" src="@_qrCode" width="300" class="mb-5" />
 
-                            <a href="/join/@SessionId">Join Here</a>
-                            <ul>
-                                @foreach (var user in _users)
-                                {
-                                    if (!user.IsHost)
-                                    {
-                                        <li>@user.UserName</li>
-                                    }
-                                }
-                            </ul>
-                            <button @onclick="SelectWinner">Show Winner</button>
-                            <h1>@Winner?.UserName</h1>
-                        </div>
+            <div class="container">
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <h2>Scan QR code to join.</h2>
                     </div>
+                </div>
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <img alt="" src="@_qrCode" width="300" />
+                    </div>
+                </div>
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <a href="/join/@SessionId">Join Here</a>
+                    </div>
+                </div>
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="SelectWinner" disabled="@(_session.GetEligibleUsers().Count == 0)">Show Winner</button>
+                    </div>
+                </div>
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <h1>@Winner?.UserName</h1>
+                    </div>
+                </div>
+                <div class="row justify-content-lg-center">
+                    <div class="col-lg-auto">
+                        <ul class="list-group">
+                            @foreach (var user in _session.GetEligibleUsers())
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center@(user.ConnectionId == Winner?.ConnectionId ? " list-group-item-success" : _session.Winners.Any(w => w.ConnectionId == user.ConnectionId) ? " disabled" : "")">@user.UserName</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="row justify-content-lg-center">
                 </div>
             </div>
 
@@ -115,6 +127,7 @@
             break;
     }
 }
+
 
 @code {
 
@@ -139,7 +152,7 @@
     public string? SessionId { get; set; }
 
     private HubConnection? hubConnection;
-    private readonly List<User> _users = new List<User>();
+    private Session _session;
 
     protected override async Task OnInitializedAsync()
     {
@@ -147,10 +160,10 @@
             .WithUrl(Navigation.ToAbsoluteUri("/prizewinnerhub"))
             .Build();
 
-        hubConnection.On<string>("SessionStarted", SessionStarted);
-        hubConnection.On<User>("UserJoined", UserJoined);
-        hubConnection.On<User>("UserLeft", UserLeft);
-        hubConnection.On<User>("WinnerSelected", WinnerSelected);
+        hubConnection.On<Session>("SessionStarted", SessionStarted);
+        hubConnection.On<Session>("UserJoined", UserJoined);
+        hubConnection.On<Session, User>("UserLeft", UserLeft);
+        hubConnection.On<Session, User>("WinnerSelected", WinnerSelected);
 
         await hubConnection.StartAsync();
 
@@ -165,8 +178,9 @@
         }
     }
 
-    private void WinnerSelected(User winner)
+    private void WinnerSelected(Session session, User winner)
     {
+        _session = session;
         Winner = winner;
 
         if (winner.ConnectionId == hubConnection.ConnectionId)
@@ -179,35 +193,36 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void UserLeft(User user)
+    private void UserLeft(Session session, User user)
     {
-        var userToRemove = _users.FirstOrDefault(u => u.ConnectionId == user.ConnectionId);
-        if (userToRemove is not null)
+        if (Winner?.ConnectionId == user.ConnectionId)
         {
-            _users.Remove(userToRemove);
+            Winner = null;
         }
+        _session = session;
         InvokeAsync(StateHasChanged);
     }
 
-    private void UserJoined(User user)
+    private void UserJoined(Session session)
     {
-        _users.Add(user);
+        _session = session;
+
+
         if (!_isHost)
-            _currentView = CurrentView.SessionJoined;
-
-        if (!_isHost && hubConnection.ConnectionId == user.ConnectionId)
         {
+            _currentView = CurrentView.SessionJoined;
             //This is the current user
-            _currentUser = user;
+            _currentUser = session.Users.SingleOrDefault(u => u.ConnectionId == hubConnection.ConnectionId);
         }
         InvokeAsync(StateHasChanged);
     }
 
-    private void SessionStarted(string sessionId)
+    private void SessionStarted(Session session)
     {
+        _session = session;
         using MemoryStream ms = new();
         QRCodeGenerator qrCodeGenerate = new();
-        var url = Navigation.ToAbsoluteUri($"/join/{sessionId}").ToString();
+        var url = Navigation.ToAbsoluteUri($"/join/{session.SessionId}").ToString();
         QRCodeData qrCodeData = qrCodeGenerate.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
         QRCode qrCode = new(qrCodeData);
         using Bitmap qrBitMap = qrCode.GetGraphic(20);
@@ -216,7 +231,7 @@
         _qrCode = $"data:image/png;base64,{base64}";
 
 
-        SessionId = sessionId;
+        SessionId = session.SessionId;
         _currentView = CurrentView.SelectingWinner;
         InvokeAsync(StateHasChanged);
     }
@@ -237,16 +252,6 @@
         }
     }
 
-
-
-    // private async Task Send()
-    // {
-    //     if (hubConnection is not null)
-    //     {
-    //         await hubConnection.SendAsync("SendMessage", userInput, messageInput);
-    //     }
-    // }
-
     public bool IsConnected =>
         hubConnection?.State == HubConnectionState.Connected;
 
@@ -264,8 +269,5 @@
         {
             await hubConnection.SendAsync("SelectWinner");
         }
-        //
-        // Winner = _users.MinBy(u => Guid.NewGuid());
     }
-
 }
