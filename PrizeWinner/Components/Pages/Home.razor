@@ -9,13 +9,13 @@
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
-<PageTitle>Prize Winner</PageTitle>
+<PageTitle>Pick-a-Name</PageTitle>
 @{
     switch (_currentView)
     {
         case CurrentView.NotJoined:
             <div class="px-4 py-5 my-5 text-center">
-                <h1 class="display-5 fw-bold">Prize Winner</h1>
+                <h1 class="display-5 fw-bold">Pick-a-Name</h1>
                 <div class="col-lg-6 mx-auto">
                     <p class="lead mb-4">Easily enroll and select winners during your events!</p>
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
@@ -33,6 +33,14 @@
                 <h1 class="display-5 fw-bold">Create a new session</h1>
                 <div class="col-lg-6 mx-auto">
                     <p class="lead mb-4">Create a new session so your group can join.</p>
+                </div>
+                <div class="row justify-content-center">
+                    <div class="col-lg-2">Session name:</div>
+                    <div class="col-lg-2">
+                        <input class="" type="text" @bind="_sessionName" />
+                    </div>
+                </div>
+                <div class="col-lg-6 mx-auto my-4">
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
                         <div class="form-group">
                             <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="CreateSession">Create Session</button>
@@ -44,14 +52,13 @@
         case CurrentView.Joining:
             <div class="px-4 py-5 my-5 text-center">
                 <h3 class="fw-bold">Join a session by entering your name:</h3>
-                <div class="col-lg-6 mx-auto">
+                <div class="col-lg-2 mx-auto">
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <div class="form-group">
-                            <label class="lead">
-                                Your Name:
-                                <input @bind="_enteredUserName" />
-                                <button class="btn btn-primary btn-lg px-4 gap-3" @onclick="() => JoinSession(_enteredUserName)">Join Session</button>
-                            </label>
+                        <div class="form-group input-group">
+                            <input class="form-control" type="text" @bind="_enteredUserName" placeholder="Your name" aria-label="Your name" aria-describedby="basic-addon2" />
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" type="button" @onclick="() => JoinSession(_enteredUserName)">Join Session</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -63,10 +70,19 @@
         case CurrentView.SessionJoined:
             <div class="px-4 py-5 my-5 text-center">
                 <div class="col-lg-6 mx-auto">
+                    @if (!string.IsNullOrWhiteSpace(_session?.Name))
+                    {
+                        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                            <p class="lead mb-4">Session: @_session?.Name</p>
+                        </div>
+                    }
                     <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                        <p class="lead mb-4">You've been entered with the name: @_currentUser?.UserName</p>
+                        <p class="lead mb-4">You've been entered with the name:</p>
                     </div>
-                    @if (Winner?.ConnectionId == hubConnection?.ConnectionId)
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                        <h1>@_currentUser?.UserName</h1>
+                    </div>
+                    @if (_winner?.ConnectionId == _hubConnection?.ConnectionId)
                     {
                         <div class="col-lg-6 mx-auto">
                             <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
@@ -105,7 +121,7 @@
                 </div>
                 <div class="row justify-content-lg-center">
                     <div class="col-lg-auto">
-                        <h1>@Winner?.UserName</h1>
+                        <h1>@_winner?.UserName</h1>
                     </div>
                 </div>
                 <div class="row justify-content-lg-center">
@@ -113,7 +129,7 @@
                         <ul class="list-group">
                             @foreach (var user in _session.GetEligibleUsers())
                             {
-                                <li class="list-group-item d-flex justify-content-between align-items-center@(user.ConnectionId == Winner?.ConnectionId ? " list-group-item-success" : _session.Winners.Any(w => w.ConnectionId == user.ConnectionId) ? " disabled" : "")">@user.UserName</li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center@(user.ConnectionId == _winner?.ConnectionId ? " list-group-item-success" : _session.Winners.Any(w => w.ConnectionId == user.ConnectionId) ? " disabled" : "")">@user.UserName</li>
                             }
                         </ul>
                     </div>
@@ -145,27 +161,28 @@
     private string? _qrCode;
     private string? _enteredUserName;
     private bool _isHost = false;
-    private User? Winner;
+    private User? _winner;
     private User? _currentUser;
+    private string? _sessionName;
 
     [Parameter]
     public string? SessionId { get; set; }
 
-    private HubConnection? hubConnection;
-    private Session _session;
+    private HubConnection? _hubConnection;
+    private Session? _session;
 
     protected override async Task OnInitializedAsync()
     {
-        hubConnection = new HubConnectionBuilder()
+        _hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/prizewinnerhub"))
             .Build();
 
-        hubConnection.On<Session>("SessionStarted", SessionStarted);
-        hubConnection.On<Session>("UserJoined", UserJoined);
-        hubConnection.On<Session, User>("UserLeft", UserLeft);
-        hubConnection.On<Session, User>("WinnerSelected", WinnerSelected);
+        _hubConnection.On<Session>("SessionStarted", SessionStarted);
+        _hubConnection.On<Session>("UserJoined", UserJoined);
+        _hubConnection.On<Session, User>("UserLeft", UserLeft);
+        _hubConnection.On<Session, User>("WinnerSelected", WinnerSelected);
 
-        await hubConnection.StartAsync();
+        await _hubConnection.StartAsync();
 
         if (string.IsNullOrWhiteSpace(SessionId))
         {
@@ -181,23 +198,16 @@
     private void WinnerSelected(Session session, User winner)
     {
         _session = session;
-        Winner = winner;
-
-        if (winner.ConnectionId == hubConnection.ConnectionId)
-        {
-            //This user is the winner
-
-        }
-
+        _winner = winner;
 
         InvokeAsync(StateHasChanged);
     }
 
     private void UserLeft(Session session, User user)
     {
-        if (Winner?.ConnectionId == user.ConnectionId)
+        if (_winner?.ConnectionId == user.ConnectionId)
         {
-            Winner = null;
+            _winner = null;
         }
         _session = session;
         InvokeAsync(StateHasChanged);
@@ -207,12 +217,11 @@
     {
         _session = session;
 
-
         if (!_isHost)
         {
             _currentView = CurrentView.SessionJoined;
             //This is the current user
-            _currentUser = session.Users.SingleOrDefault(u => u.ConnectionId == hubConnection.ConnectionId);
+            _currentUser = session.Users.SingleOrDefault(u => u.ConnectionId == _hubConnection.ConnectionId);
         }
         InvokeAsync(StateHasChanged);
     }
@@ -238,36 +247,36 @@
 
     private async Task CreateSession()
     {
-        if (hubConnection is not null)
+        if (_hubConnection is not null)
         {
-            await hubConnection.SendAsync("CreateSession");
+            await _hubConnection.SendAsync("CreateSession", _sessionName);
         }
     }
 
     private async Task JoinSession(string sessionId)
     {
-        if (hubConnection is not null)
+        if (_hubConnection is not null)
         {
-            await hubConnection.SendAsync("JoinSession", SessionId, _enteredUserName);
+            await _hubConnection.SendAsync("JoinSession", SessionId, _enteredUserName);
         }
     }
 
     public bool IsConnected =>
-        hubConnection?.State == HubConnectionState.Connected;
+        _hubConnection?.State == HubConnectionState.Connected;
 
     public async ValueTask DisposeAsync()
     {
-        if (hubConnection is not null)
+        if (_hubConnection is not null)
         {
-            await hubConnection.DisposeAsync();
+            await _hubConnection.DisposeAsync();
         }
     }
 
     private async Task SelectWinner()
     {
-        if (hubConnection is not null)
+        if (_hubConnection is not null)
         {
-            await hubConnection.SendAsync("SelectWinner");
+            await _hubConnection.SendAsync("SelectWinner");
         }
     }
 }

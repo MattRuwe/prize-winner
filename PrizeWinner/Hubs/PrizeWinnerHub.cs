@@ -6,11 +6,12 @@ namespace PrizeWinner.Hubs
     {
         private static List<Session> _sessions = new List<Session>();
 
-        public async Task CreateSession()
+        public async Task CreateSession(string? sessionName)
         {
             var sessionId = Guid.NewGuid().ToString();
             var session = new Session
             {
+                Name = sessionName,
                 SessionId = sessionId,
                 Users = new List<User>() { new User() { ConnectionId = Context.ConnectionId, IsHost = true } }
             };
@@ -81,6 +82,7 @@ namespace PrizeWinner.Hubs
     public class Session
     {
         public string? SessionId { get; set; }
+        public string? Name { get; set; }
         public List<User> Users { get; set; } = new();
         public List<User> Winners { get; set; } = new();
 
