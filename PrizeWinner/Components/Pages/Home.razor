@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @page "/join/{SessionId}"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.SignalR.Client
@@ -124,15 +124,26 @@
                         <h1>@_winner?.UserName</h1>
                     </div>
                 </div>
-                <div class="row justify-content-lg-center">
-                    <div class="col-lg-auto">
-                        <ul class="list-group">
-                            @foreach (var user in _session.GetEligibleUsers())
+
+                <div class="d-flex flex-wrap">
+                    @foreach (var user in _session.GetEligibleUsers())
+                    {
+                        var isWinner = user.ConnectionId == _winner?.ConnectionId;
+                        <div class="p-2">
+                            @if(isWinner)
                             {
-                                <li class="list-group-item d-flex justify-content-between align-items-center@(user.ConnectionId == _winner?.ConnectionId ? " list-group-item-success" : _session.Winners.Any(w => w.ConnectionId == user.ConnectionId) ? " disabled" : "")">@user.UserName</li>
+                                <button type="button" class="btn btn-success" disabled>
+                                    @user.UserName
+                                </button>
                             }
-                        </ul>
-                    </div>
+                            else
+                            {
+                                <button type="button" class="btn btn-primary" disabled>
+                                    @user.UserName
+                                </button>
+                            }
+                        </div>
+                    }
                 </div>
 
                 <div class="row justify-content-lg-center">
