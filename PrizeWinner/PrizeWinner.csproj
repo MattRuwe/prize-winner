@@ -13,4 +13,9 @@
     <PackageReference Include="QRCoderNetCore" Version="1.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\assets\" />
+    <Folder Include="wwwroot\images\" />
+  </ItemGroup>
+
 </Project>
